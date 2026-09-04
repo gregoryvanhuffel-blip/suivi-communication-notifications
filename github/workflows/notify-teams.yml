@@ -1,0 +1,47 @@
+name: Notifier Teams
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # toutes les 10 minutes
+  workflow_dispatch:          # bouton "Run workflow" pour tester manuellement
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérifier et envoyer les notifications en attente
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        run: |
+          set -e
+          DB="https://technocampus-calendrier-default-rtdb.europe-west1.firebasedatabase.app/suiviCommunication2027/notifications"
+
+          RESP=$(curl -s "$DB.json?orderBy=%22processed%22&equalTo=false")
+
+          if [ "$RESP" = "null" ] || [ -z "$RESP" ]; then
+            echo "Aucune notification en attente."
+            exit 0
+          fi
+
+          echo "$RESP" | jq -c 'to_entries[]?' | while read -r entry; do
+            KEY=$(echo "$entry" | jq -r '.key')
+            FORMATION=$(echo "$entry" | jq -r '.value.formation // "Formation"')
+            ACTION=$(echo "$entry" | jq -r '.value.action // "Action"')
+            DATES=$(echo "$entry" | jq -r '.value.dates // "?"')
+            MONTH=$(echo "$entry" | jq -r '.value.month // ""')
+
+            TEXT="📌 **$FORMATION** — $ACTION à prévoir. Session du $DATES ($MONTH 2027)"
+
+            PAYLOAD=$(jq -n --arg t "$TEXT" '{text: $t}')
+
+            echo "Envoi Teams pour $KEY : $TEXT"
+            curl -s -o /dev/null -w "%{http_code}" -X POST \
+              -H "Content-Type: application/json" \
+              -d "$PAYLOAD" \
+              "$TEAMS_WEBHOOK_URL"
+
+            curl -s -o /dev/null -X PATCH \
+              -H "Content-Type: application/json" \
+              -d '{"processed": true}' \
+              "$DB/$KEY.json"
+          done
