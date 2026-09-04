@@ -16,14 +16,14 @@ jobs:
           set -e
           DB="https://technocampus-calendrier-default-rtdb.europe-west1.firebasedatabase.app/suiviCommunication2027/notifications"
 
-          RESP=$(curl -s "$DB.json?orderBy=%22processed%22&equalTo=false")
+          RESP=$(curl -s "$DB.json?")
 
           if [ "$RESP" = "null" ] || [ -z "$RESP" ]; then
             echo "Aucune notification en attente."
             exit 0
           fi
 
-          echo "$RESP" | jq -c 'to_entries[]?' | while read -r entry; do
+          echo "$RESP" | jq -c 'to_entries[]? | select(.value.processed == false)' | while read -r entry; do
             KEY=$(echo "$entry" | jq -r '.key')
             FORMATION=$(echo "$entry" | jq -r '.value.formation // "Formation"')
             ACTION=$(echo "$entry" | jq -r '.value.action // "Action"')
